@@ -9,8 +9,8 @@ eval "$(fzf --bash)"
 
 # Open a pr of the current branch in gitbucket on the destination branche chosen in fzf. 
 pr() {
-  # Get the list of all Git branches and pass them to fzf for selection
-  selected_branch=$(git branch --all | sed 's/^[* ]*//' | fzf)
+   # Get the list of all Git branches and pass them to fzf for selection
+  selected_branch=$( git branch --all | sed 's/^[* ]*//' | sed 's#^remotes/origin/##' | fzf)
 
   # Check if a branch was selected
   if [ -n "$selected_branch" ]; then
@@ -46,4 +46,5 @@ pr() {
   else
     echo "No branch selected."
   fi
+
 }
