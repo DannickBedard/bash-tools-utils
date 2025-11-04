@@ -188,14 +188,14 @@ work() {
     fi
   fi
 
-  # Select base branch
-  local base_branch
-  base_branch=$(git branch --all | sed 's/^[* ]*//' | sed 's#^remotes/origin/##' | sort -u | grep -E '^(release|hotfix)/' | fzf --border --height=20% --info=inline --prompt="Select base branch : " --reverse)
-
+  echo "Selecting base branch..."
+  base_branch=$(gitselectbase | tee /dev/tty) || exit 1
   if [[ -z "$base_branch" ]]; then
     echo "❌ No base branch selected."
     return 1
   fi
+
+  echo "✅ Selected base branch: $base_branch"
 
   base_branch="${base_branch#remotes/origin/}"
 
@@ -225,10 +225,85 @@ work() {
   git checkout "$base_branch" && git pull origin "$base_branch"
   git checkout -b "$new_branch"
 
-  echo "📦 Restoring stash..."
-  git stash pop
+  gitstash
 
   echo "✅ Branch created and switched: $new_branch"
+}
+
+gitselectbase() {
+  local base_branch branch_list release_hotfix_list
+
+  # Get all branches once
+  branch_list=$(git branch --all \
+    | sed 's/^[* ]*//' \
+    | sed 's#^remotes/origin/##' \
+    | sort -u)
+
+  # Extract only release/hotfix branches
+  release_hotfix_list=$(printf "%s\n" "$branch_list" | grep -E '^(release|hotfix)/' || true)
+
+  # Pick from filtered or full list
+  if [[ -n "$release_hotfix_list" ]]; then
+    base_branch=$(printf "%s\n" "$release_hotfix_list" \
+      | fzf --border --height=20% --info=inline --prompt="Select base branch (release/hotfix): " --reverse)
+  else
+    echo "📦 No release/hotfix branches found, showing all branches." >&2
+    base_branch=$(printf "%s\n" "$branch_list" \
+      | fzf --border --height=20% --info=inline --prompt="Select base branch (all): " --reverse)
+  fi
+
+  # No selection case
+  if [[ -z "$base_branch" ]]; then
+    echo "❌ No base branch selected." >&2
+    return 1
+  fi
+
+  # Return value by echoing it
+  echo "$base_branch"
+}
+
+gitstash() {
+  # ask to show stash or not
+  local show_stash
+  show_stash=$(printf "yes\nno\napply" | fzf --prompt="Show stash?  > " --height=20% --info=inline --border)
+
+  if [[ -n "$show_stash" ]]; then
+    if [ "$show_stash" == "yes" ]; then
+      echo "📦 Showing stash..."
+      git stash show
+
+      # ask to see more detail or apply stash
+      local show_detail
+      show_detail=$(printf "yes\nno\napply" | fzf --prompt="Show detail?  > " --height=20% --info=inline --border)
+
+      if [[ -n "$show_detail" ]]; then
+        if [ "$show_detail" == "yes" ]; then
+          echo "📦 Showing detail..."
+          git stash show --patch
+        fi
+      fi
+      if [ "$show_detail" == "apply" ]; then
+        echo "📦 Applying stash..."
+        git stash apply
+      fi
+
+      # ask to apply stash.
+      local apply_stash
+      apply_stash=$(printf "yes\nno" | fzf --prompt="Apply stash?  > " --height=20% --info=inline --border)
+
+      if [[ -n "$apply_stash" ]]; then
+        if [ "$apply_stash" == "yes" ]; then
+          echo "📦 Restoring stash..."
+          git stash pop
+        fi
+      fi
+
+    fi
+    if [ "$show_stash" == "apply" ]; then
+      echo "📦 Applying stash..."
+      git stash apply
+    fi
+  fi
 }
 
 gcheckout() {
@@ -332,6 +407,7 @@ h() {
   echo "  opv              - Open project in Neovim (select and open)"
   echo ""
   echo "GIT WORKFLOWS:"
+  echo "  work 1234        - Get started working on ticket (will create the branch from the int or string or url)"
   echo "  pr               - Create pull request (release branches)"
   echo "  pra              - Create pull request (all branches)"
   echo "  gcheckout        - Fetch and checkout branch using fuzzy finder"
