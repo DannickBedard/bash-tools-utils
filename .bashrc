@@ -29,10 +29,11 @@ load_fzf() {
   fi
 }
 
+
 # Projects array - declare once at startup
 declare -A projects=(
-  ["viridem"]="/c/viridem_v2/viridem"
-  ["viridemjs"]="/c/viridem_v2/viridem/web/js"
+  ["viridem"]="/c/viridem_v3/viridem"
+  ["viridemjs"]="/c/viridem_v3/viridem/web/js"
   ["export api"]="/c/projects/viridem-api-export-test"
   ["aiCommService"]="/c/projects/aicommservice"
   ["aiService"]="/c/projects/aiservice"
@@ -97,26 +98,24 @@ opv() {
 
 # Git functions
 pr() {
-  load_fzf
-  selected_branch=$( git branch --all | sed 's/^[* ]*//' | sed 's#^remotes/origin/##' | fzf --border --height=20% --info=inline --reverse)
-  [[ -z "$selected_branch" ]] && echo "No branch selected." && return
-  
-  BITBUCKET_URL="https://bitbucket.org"
-  REMOTE_URL=$(git remote get-url origin)
-  REPO_INFO=$(echo "$REMOTE_URL" | sed -E 's#.*/([^/]+)/([^/]+)(\.git)?$#\1 \2#')
-  REPO_OWNER=$(echo "$REPO_INFO" | awk '{print $1}')
-  REPO_NAME=$(echo "$REPO_INFO" | awk '{print $2}' | sed 's/\.git$//')
-  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-  PR_URL="$BITBUCKET_URL/$REPO_OWNER/$REPO_NAME/pull-requests/new?source=$CURRENT_BRANCH&dest=$selected_branch"
-  
-  echo "Opening: $PR_URL"
-  command -v start &>/dev/null && start "$PR_URL" || echo "Please open manually: $PR_URL"
+  pra
 }
 
 pra() {
   load_fzf
-  selected_branch=$(git branch --all | sed 's/^[* ]*//' | sed 's#^remotes/origin/##' | sort -u | grep -E '^(release|hotfix)/' | fzf --border --height=20% --info=inline --reverse)
-  [[ -z "$selected_branch" ]] && echo "No branch selected." && return
+
+  base_branch=$(gitselectbase | tee /dev/tty) || exit 1
+  if [[ -z "$base_branch" ]]; then
+    echo "❌ No base branch selected."
+    return 1
+  fi
+
+  echo "✅ Selected base branch: $base_branch"
+
+  # base_branch="${base_branch#remotes/origin/}"
+
+  # selected_branch=$(git branch --all | sed 's/^[* ]*//' | sed 's#^remotes/origin/##' | sort -u | grep -E '^(release|hotfix)/' | fzf --border --height=20% --info=inline --reverse)
+  # [[ -z "$selected_branch" ]] && echo "No branch selected." && return
   
   BITBUCKET_URL="https://bitbucket.org"
   REMOTE_URL=$(git remote get-url origin)
@@ -124,7 +123,7 @@ pra() {
   REPO_OWNER=$(echo "$REPO_INFO" | awk '{print $1}')
   REPO_NAME=$(echo "$REPO_INFO" | awk '{print $2}' | sed 's/\.git$//')
   CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-  PR_URL="$BITBUCKET_URL/$REPO_OWNER/$REPO_NAME/pull-requests/new?source=$CURRENT_BRANCH&dest=$selected_branch"
+  PR_URL="$BITBUCKET_URL/$REPO_OWNER/$REPO_NAME/pull-requests/new?source=$CURRENT_BRANCH&dest=$base_branch"
   
   echo "Opening: $PR_URL"
   command -v start &>/dev/null && start "$PR_URL" || echo "Please open manually: $PR_URL"
@@ -133,10 +132,25 @@ pra() {
 work() {
   load_fzf
 
-  local ticket_input="$1"
+  local prefix="BSP"   # default prefix
+  local ticket_input=""
+
+  # Parse options
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -p|--prefix)
+        prefix="$2"
+        shift 2
+        ;;
+      *)
+        ticket_input="$1"
+        shift
+        ;;
+    esac
+  done
 
   if [[ -z "$ticket_input" ]]; then
-    echo "❌ Usage: work <ticket-number | jira-url>"
+    echo "❌ Usage: work [-p <prefix>] <ticket-number | jira-url>"
     return 1
   fi
 
@@ -148,9 +162,9 @@ work() {
     ticket_number="$ticket_input"
   fi
 
-  # Ensure BSP- prefix if not already there
-  if [[ ! "$ticket_number" =~ ^BSP- ]]; then
-    ticket_number="BSP-$ticket_number"
+  # Ensure prefix if not already there
+  if [[ ! "$ticket_number" =~ ^${prefix}- ]]; then
+    ticket_number="${prefix}-${ticket_number}"
   fi
 
   echo "🔄 Fetching branches..."
@@ -164,26 +178,22 @@ work() {
     echo "⚠️  Found existing branch(es) containing '$ticket_number':"
     echo "$existing_branch"
 
-    # Ask user whether to reuse or create new
     local choice
     choice=$(printf "Use existing\nCreate new" | fzf --prompt="Branch already exists. What do you want to do? > " --height=10% --info=inline --border --reverse)
 
     if [[ "$choice" == "Use existing" ]]; then
-      # Let the user pick which one if there are multiple
       local selected_existing
       selected_existing=$(echo "$existing_branch" | fzf --prompt="Select existing branch > " --height=20% --info=inline --border --reverse)
-
       if [[ -z "$selected_existing" ]]; then
         echo "❌ No branch selected."
         return 1
       fi
-
-      # Clean up remote prefix
       selected_existing="${selected_existing#remotes/origin/}"
-
+      git stash
       echo "🔀 Checking out existing branch: $selected_existing"
       git checkout "$selected_existing"
       echo "✅ Switched to existing branch."
+      apply_stash
       return 0
     fi
   fi
@@ -194,24 +204,18 @@ work() {
     echo "❌ No base branch selected."
     return 1
   fi
-
   echo "✅ Selected base branch: $base_branch"
-
   base_branch="${base_branch#remotes/origin/}"
 
-  # Select type (bugfix first)
   local branch_type
   branch_type=$(printf "bugfix\nfeature" | fzf --prompt="Select branch type > " --height=20% --info=inline --border --reverse)
-
   if [[ -z "$branch_type" ]]; then
-      echo "❌ No branch type selected."
-      return 1
+    echo "❌ No branch type selected."
+    return 1
   fi
 
-  # Ask for optional short description
   read -rp "📝 Enter short description (e.g. add-login-api): " description
 
-  # Build final branch name
   local new_branch="${branch_type}/${ticket_number}"
   if [[ -n "$description" ]]; then
     description=$(echo "$description" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
@@ -219,14 +223,10 @@ work() {
   fi
 
   echo "🚀 Creating branch '$new_branch' from '$base_branch'..."
-  echo "💾 Stashing changes..."
   git stash
-
   git checkout "$base_branch" && git pull origin "$base_branch"
   git checkout -b "$new_branch"
-
-  gitstash
-
+  apply_stash
   echo "✅ Branch created and switched: $new_branch"
 }
 
@@ -262,20 +262,30 @@ gitselectbase() {
   echo "$base_branch"
 }
 
-gitstash() {
+apply_stash() {
   # ask to show stash or not
   local show_stash
-  show_stash=$(printf "yes\nno\napply" | fzf --prompt="Show stash?  > " --height=20% --info=inline --border)
+  show_stash=$(printf "yes\nno\napply\nskip" | fzf --prompt="Show stash?  > " --height=20% --info=inline --border)
 
   if [[ -n "$show_stash" ]]; then
+
+    if [ "$show_stash" == "skip" ]; then
+      echo "Skipping stash recup..."
+      return 1
+    fi
+
     if [ "$show_stash" == "yes" ]; then
       echo "📦 Showing stash..."
       git stash show
 
       # ask to see more detail or apply stash
       local show_detail
-      show_detail=$(printf "yes\nno\napply" | fzf --prompt="Show detail?  > " --height=20% --info=inline --border)
+      show_detail=$(printf "yes\nno\napply\nskip" | fzf --prompt="Show detail?  > " --height=20% --info=inline --border)
 
+      if [ "$show_detail" == "skip" ]; then
+        echo "Skipping stash recup..."
+        return 1
+      fi
       if [[ -n "$show_detail" ]]; then
         if [ "$show_detail" == "yes" ]; then
           echo "📦 Showing detail..."
@@ -284,24 +294,32 @@ gitstash() {
       fi
       if [ "$show_detail" == "apply" ]; then
         echo "📦 Applying stash..."
-        git stash apply
+        git stash pop
+        return 1
       fi
 
       # ask to apply stash.
       local apply_stash
-      apply_stash=$(printf "yes\nno" | fzf --prompt="Apply stash?  > " --height=20% --info=inline --border)
+      apply_stash=$(printf "yes\nno\nskip" | fzf --prompt="Apply stash?  > " --height=20% --info=inline --border)
+
+      if [ "$apply_stash" == "skip" ]; then
+        echo "Skipping stash recup..."
+        return 1
+      fi
 
       if [[ -n "$apply_stash" ]]; then
         if [ "$apply_stash" == "yes" ]; then
           echo "📦 Restoring stash..."
           git stash pop
+        return 1
         fi
       fi
 
     fi
     if [ "$show_stash" == "apply" ]; then
       echo "📦 Applying stash..."
-      git stash apply
+      git stash pop
+      return 1
     fi
   fi
 }
@@ -377,7 +395,7 @@ vconfig() {
 }
 
 note() {
-  nvim "${projects["notes"]}"
+  cd "${projects["notes"]}" && nvim .
 }
 
 vm() {
@@ -457,7 +475,7 @@ si() {
   start "" "$url"
 }
 
-npmi() {
+ni() {
   local viridemProjectPath="${projects["viridem"]}"
   if [[ "$PWD" == *"$viridemProjectPath"* ]]; then
     cd "$viridemProjectPath/web/js" && npm i
@@ -466,7 +484,7 @@ npmi() {
   fi
 }
 
-npmb() {
+nb() {
   local viridemProjectPath="${projects["viridem"]}"
   if [[ "$PWD" == *"$viridemProjectPath"* ]]; then
     cd "$viridemProjectPath/web/js" && npm run build
@@ -475,7 +493,7 @@ npmb() {
   fi
 }
 
-npmw() {
+nw() {
   local viridemProjectPath="${projects["viridem"]}"
   if [[ "$PWD" == *"$viridemProjectPath"* ]]; then
     cd "$viridemProjectPath/web/js" && npm run watch
@@ -485,7 +503,7 @@ npmw() {
 }
 
 viridemRmUpdate() {
-  rm /c/viridem_v2/app/data/.viridemUpdate.lock
+  rm /c/viridem_v3/app/data/.viridemUpdate.lock
 }
 
 rmap() {
