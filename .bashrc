@@ -22,35 +22,58 @@ alias npm='load_nvm; command npm'
 HISTSIZE=500  
 HISTFILESIZE=100000
 
-# Lazy-load fzf only when needed
-load_fzf() {
-  if command -v fzf >/dev/null 2>&1; then
-    eval "$(fzf --bash)"
-  fi
-}
+source ~/bash_utils/fzf.sh
 
+# Lazy-load fzf only when needed
+# load_fzf() {
+  # if command -v fzf >/dev/null 2>&1; then
+    # eval "$(fzf --bash)"
+  # fi
+# }
 
 # Projects array - declare once at startup
-declare -A projects=(
-  ["viridem"]="/c/viridem_v3/viridem"
-  ["viridemjs"]="/c/viridem_v3/viridem/web/js"
-  ["export api"]="/c/projects/viridem-api-export-test"
-  ["aiCommService"]="/c/projects/aicommservice"
-  ["aiService"]="/c/projects/aiservice"
-  ["viridemConnect"]="/c/ViridemConnect"
-  ["nvimConfig"]="/c/Users/dannick.bedard/AppData/Local/nvim"
-  ["nvimPlugin"]="/c/Users/dannick.bedard/AppData/Local/nvim-local"
-  ["userConfig"]="/c/Users/dannick.bedard"
-  ["notes"]="/c/Users/dannick.bedard/Documents/Notes"
-  ["devTemp"]="/c/Users/dannick.bedard/Documents/Temp/test/dev"
-  ["local project"]="/c/projects/"
-  ["canlak"]="/c/projects/canlak"
-  ["junitJava"]="/c/projects/viridem-junit"
-  ["glazemw"]="/c/Users/dannick.bedard/.glzr"
-  ["wezterm"]="/c/Users/dannick.bedard/wezterm-config"
-  ["keyboard"]="/c/Users/dannick.bedard/Documents/katana-config"
-  ["formula viridem"]="/c/projects/viridem-formula"
-)
+# [[ -v projects ]] && unset projects
+# declare -A projects=(
+  # ["nvimConfig"]="/c/Users/danni/AppData/Local/nvim"
+  # ["nvimPlugin"]="/c/Users/danni/AppData/Local/nvim-local"
+  # ["userConfig"]="/c/Users/danni"
+  # ["notes"]="/c/Users/danni/Documents/Notes"
+  # ["local_project"]="/c/projects/"
+  # ["blazemw"]="/c/Users/danni/.glzr"
+  # ["wezterm"]="/c/Users/danni/wezterm-config"
+# )
+
+PROJECTS_FILE="$HOME/.bash_projects.json"
+
+load_projects() {
+  [[ -v projects ]] && unset projects
+  declare -gA projects
+
+  if [[ ! -f "$PROJECTS_FILE" ]]; then
+    echo "⚠️  Projects file not found: $PROJECTS_FILE"
+    return 1
+  fi
+
+  while IFS= read -r line; do
+    # Match: "key": "value"
+    if [[ $line =~ \"([^\"]+)\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+      projects["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+    fi
+  done < "$PROJECTS_FILE"
+}
+
+load_projects # load the projects from json file
+
+refresh_projects() {
+  echo "🔄 Reloading projects..."
+
+  if load_projects; then
+    echo "✅ Projects reloaded ($((${#projects[@]})) entries)"
+  else
+    echo "❌ Failed to reload projects"
+    return 1
+  fi
+}
 
 # Project navigation functions
 list_projects() {
