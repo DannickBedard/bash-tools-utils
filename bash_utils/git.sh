@@ -12,6 +12,11 @@ work() {
         prefix="$2"
         shift 2
         ;;
+      -n|--name)
+        prefix=""
+        ticket_input="$2"
+        break
+        ;;
       *)
         ticket_input="$1"
         shift
@@ -33,9 +38,13 @@ work() {
   fi
 
   # Ensure prefix if not already there
-  if [[ ! "$ticket_number" =~ ^${prefix}- ]]; then
-    ticket_number="${prefix}-${ticket_number}"
+  if [[ "$prefix" != "" ]]; then
+    if [[ ! "$ticket_number" =~ ^${prefix}- ]]; then
+      ticket_number="${prefix}-${ticket_number}"
+    fi
   fi
+
+  echo "branch name: $ticket_number"
 
   echo "🔄 Fetching branches..."
   git fetch -p >/dev/null 2>&1
@@ -69,7 +78,7 @@ work() {
   fi
 
   echo "Selecting base branch..."
-  base_branch=$(gitselectbase | tee /dev/tty) || exit 1
+  base_branch=$(git_select_base_branch | tee /dev/tty) || exit 1
   if [[ -z "$base_branch" ]]; then
     echo "❌ No base branch selected."
     return 1
@@ -84,7 +93,7 @@ work() {
     return 1
   fi
 
-  read -rp "📝 Enter short description (e.g. add-login-api): " description
+  read -rp "📝 Enter suffixes (optionnal e.g. v1)" description
 
   local new_branch="${branch_type}/${ticket_number}"
   if [[ -n "$description" ]]; then
@@ -100,7 +109,7 @@ work() {
   echo "✅ Branch created and switched: $new_branch"
 }
 
-gitselectbase() {
+git_select_base_branch() {
   local base_branch branch_list release_hotfix_list
 
   # Get all branches once
@@ -112,15 +121,26 @@ gitselectbase() {
   # Extract only release/hotfix branches
   release_hotfix_list=$(printf "%s\n" "$branch_list" | grep -E '^(release|hotfix)/' || true)
 
+  local all_branches_shown=false
   # Pick from filtered or full list
   if [[ -n "$release_hotfix_list" ]]; then
     base_branch=$(printf "%s\n" "$release_hotfix_list" \
       | default_fzf --prompt="Select base branch (release/hotfix): ")
   else
+    all_branches_shown=true
     echo "📦 No release/hotfix branches found, showing all branches." >&2
     base_branch=$(printf "%s\n" "$branch_list" \
       | default_fzf --prompt="Select base branch (all): " --reverse)
   fi
+
+  if [[ "$all_branches_shown" == true ]]; then
+    echo "❌ No base branch selected." >&2
+    return 1
+  fi
+
+  echo "📦 No branch chosen, showing all branches." >&2
+  base_branch=$(printf "%s\n" "$branch_list" \
+    | default_fzf --prompt="Select base branch (all): " --reverse)
 
   # No selection case
   if [[ -z "$base_branch" ]]; then
@@ -137,16 +157,14 @@ apply_stash() {
   local show_stash
   show_stash=$(printf "yes\nno\napply\nskip" | default_fzf prompt="Show stash?  > ")
 
-  if [[ -n "$show_stash" ]]; then
+  if [ "$show_stash" == "skip" ]; then
+    echo "Skipping stash recup..."
+    return 1
+  fi
 
-    if [ "$show_stash" == "skip" ]; then
-      echo "Skipping stash recup..."
-      return 1
-    fi
-
-    if [ "$show_stash" == "yes" ]; then
-      echo "📦 Showing stash..."
-      git stash show
+  if [ "$show_stash" == "yes" ]; then
+    echo "📦 Showing stash..."
+    git stash show
 
       # ask to see more detail or apply stash
       local show_detail
@@ -181,16 +199,15 @@ apply_stash() {
         if [ "$apply_stash" == "yes" ]; then
           echo "📦 Restoring stash..."
           git stash pop
-        return 1
+          return 1
         fi
       fi
 
-    fi
-    if [ "$show_stash" == "apply" ]; then
-      echo "📦 Applying stash..."
-      git stash pop
-      return 1
-    fi
+  fi
+  if [ "$show_stash" == "apply" ]; then
+    echo "📦 Applying stash..."
+    git stash pop
+    return 1
   fi
 }
 
