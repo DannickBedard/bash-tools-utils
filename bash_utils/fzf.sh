@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Lazy-load fzf only when needed
 load_fzf() {

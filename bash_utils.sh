@@ -1,4 +1,5 @@
-#/bin/bash
+#!/usr/bin/env bash
+
 # Start timing bashrc load
 _bashrc_start_time=$(date +%s%N)
 

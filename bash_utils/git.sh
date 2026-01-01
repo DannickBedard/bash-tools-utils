@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 work() {
 
@@ -153,13 +153,24 @@ git_select_base_branch() {
 }
 
 apply_stash() {
+
+  skip_stash() {
+    echo "Skipping stash recup..."
+    return 1
+  }
+
+  restore_stash() {
+    echo "📦 Restoring stash..."
+    git stash pop
+    return 1
+  }
+
   # ask to show stash or not
   local show_stash
   show_stash=$(printf "yes\nno\napply\nskip" | default_fzf prompt="Show stash?  > ")
 
   if [ "$show_stash" == "skip" ]; then
-    echo "Skipping stash recup..."
-    return 1
+    skip_stash
   fi
 
   if [ "$show_stash" == "yes" ]; then
@@ -171,18 +182,18 @@ apply_stash() {
       show_detail=$(printf "yes\nno\napply\nskip" | default_fzf --prompt="Show detail?  > ")
 
       if [ "$show_detail" == "skip" ]; then
-        echo "Skipping stash recup..."
-        return 1
+        skip_stash
       fi
+      
       if [[ -n "$show_detail" ]]; then
         if [ "$show_detail" == "yes" ]; then
           echo "📦 Showing detail..."
           git stash show --patch
         fi
       fi
+
       if [ "$show_detail" == "apply" ]; then
-        echo "📦 Applying stash..."
-        git stash pop
+        restore_stash
         return 1
       fi
 
@@ -191,19 +202,19 @@ apply_stash() {
       apply_stash=$(printf "yes\nno\nskip" | default_fzf --prompt="Apply stash?  > ")
 
       if [ "$apply_stash" == "skip" ]; then
-        echo "Skipping stash recup..."
-        return 1
+        skip_stash
       fi
 
       if [[ -n "$apply_stash" ]]; then
         if [ "$apply_stash" == "yes" ]; then
           echo "📦 Restoring stash..."
-          git stash pop
+          restore_stash
           return 1
         fi
       fi
 
   fi
+
   if [ "$show_stash" == "apply" ]; then
     echo "📦 Applying stash..."
     git stash pop

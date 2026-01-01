@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # git pull if possible.
 
@@ -31,14 +31,21 @@ if [[ ! -f ~/.bash_projects.json ]]; then
   cp ./bash_projects.json ~/bash_projects.json
 fi
 
-# reload bashrc
-# add source bash_utils.sh to .bashrc. if already present in file do nothing
-if [[ ! -f ~/.bashrc ]]; then
-  touch ~/.bashrc
+# reload config file
+# add source bash_utils.sh to the config file. if already present in file do nothing
+
+config_file="$HOME/.bashrc"
+
+if [[ -f ~/.zshrc ]]; then
+  config_file="$HOME/.zshrc"
 fi
 
-if [[ $(grep -c 'source ~/bash_utils.sh' ~/.bashrc) -eq 0 ]]; then
-  echo "source ~/bash_utils.sh" >> ~/.bashrc
+if [[ ! -f "$config_file" ]]; then
+  touch config_file
 fi
 
-source ~/.bashrc
+if [[ $(grep -c 'source ~/bash_utils.sh' "$config_file") -eq 0 ]]; then
+  echo "source ~/bash_utils.sh" >> "$config_file"
+fi
+
+source config_file
