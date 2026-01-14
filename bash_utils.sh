@@ -34,6 +34,7 @@ source ~/bash_utils/bitbucket.sh
 
 # git helper functions
 source ~/bash_utils/git.sh
+source ~/bash_utils/spinner.sh
 
 
 # Utility functions
