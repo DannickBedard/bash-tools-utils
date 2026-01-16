@@ -3,5 +3,5 @@
 # Function a program
 
 spinner() {
-  ~/bash_utils/program/spinner.sh "$@"
+  ~/bash_utils/program/spinner.sh -t aesthetic "$@"
 }
