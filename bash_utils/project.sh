@@ -69,3 +69,111 @@ opv() {
   fi
 }
 
+add_project() {
+  local name="$1"
+  local path="${2:-$(pwd)}"
+  local file="${PROJECTS_FILE}"
+
+  # ---- validation ----
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "Error: jq is required but not installed" >&2
+    return 1
+  fi
+
+  if [ -z "$name" ]; then
+    echo "Usage: add_project <name> [path]" >&2
+    return 1
+  fi
+
+  # ---- setup ----
+  mkdir -p "$(dirname "$file")"
+
+  # Normalize path
+  path="$(cd "$path" && pwd)"
+
+  # Initialize file if missing or empty
+  if [ ! -s "$file" ]; then
+    echo '{}' >"$file"
+  fi
+
+ # ---- update json (WRITE IT BACK) ----
+  tmp="$(mktemp)"
+
+  if ! jq --arg name "$name" --arg path "$path" \
+        '.[$name] = $path' \
+        "$file" >"$tmp"; then
+    echo "Error: jq failed" >&2
+    rm -f "$tmp"
+    return 1
+  fi
+
+  mv "$tmp" "$file"
+
+  echo "✓ Project '$name' → $path"
+  refresh_projects
+}
+ remove_project() {
+  local name="$1"
+  local file="$PROJECTS_FILE"
+  local tmp
+
+  if [ -z "$name" ]; then
+    echo "Usage: remove_project <name>" >&2
+    return 1
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "Error: jq is required" >&2
+    return 1
+  fi
+
+  if [ ! -f "$file" ]; then
+    echo "Projects file not found: $file" >&2
+    return 1
+  fi
+
+  # Check existence
+  if ! jq -e --arg name "$name" 'has($name)' "$file" >/dev/null; then
+    echo "Project '$name' not found" >&2
+    return 1
+  fi
+
+  tmp="$(mktemp)"
+
+  if ! jq --arg name "$name" \
+        'del(.[$name])' \
+        "$file" >"$tmp"; then
+    echo "Error: jq failed" >&2
+    rm -f "$tmp"
+    return 1
+  fi
+
+  mv "$tmp" "$file"
+
+  echo "🗑️  Removed project '$name'"
+  refresh_projects
+}
+
+opr() {
+  local selected_project confirm
+
+  selected_project=$(for name in "${!projects[@]}"; do
+    printf "%s\t%s\n" "$name" "${projects[$name]}"
+  done | default_fzf | cut -f1)
+
+  [[ -z "$selected_project" ]] && return 0
+
+  echo "Delete project '$selected_project'?"
+  read -r -p "[y/N] " confirm
+
+  case "$confirm" in
+    y|Y)
+      remove_project "$selected_project"
+      ;;
+    *)
+      echo "❌ Cancelled"
+      ;;
+  esac
+}
+
+
