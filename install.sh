@@ -26,7 +26,7 @@ cp ./bash_utils.sh ~/bash_utils.sh
 cp -r ./bash_utils ~/
 
 # cp .bash_projects.json to home if not exist
-if [[ ! -f ~/.bash_projects.json ]]; then
+if [[ ! -f ~/bash_projects.json ]]; then
   # to not overwrite the existing user config
   cp ./bash_projects.json ~/bash_projects.json
 fi

@@ -7,13 +7,20 @@ small bash scripts to help my workflow day to day
 - jq (https://jqlang.org/download/)
 - git (used only for git helpers)
 
-# Note
-For now i have only tested in window... i am open to pr or suggestion. 
-
 
 # Window terminal
-for faster start time
+For faster start time
 "C:/Program Files/Git/bin/bash.exe" --noprofile -i
+
+# ZSH user : 
+Make the default sheel bash. Because zsh is not compatible with bash
+```zsh
+# Source - https://stackoverflow.com/a
+# Posted by larsks
+# Retrieved 2026-01-23, License - CC BY-SA 3.0
+exec bash
+
+```
 
 
 # Todos 

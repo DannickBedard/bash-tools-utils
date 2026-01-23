@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Get project defined in .bash_projects.json
-PROJECTS_FILE="$HOME/.bash_projects.json"
+PROJECTS_FILE="$HOME/bash_projects.json"
 
 load_projects() {
   [[ -v projects ]] && unset projects
