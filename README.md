@@ -26,6 +26,6 @@ exec bash
 # Todos 
 - [x] Add spinner program 
 - [ ] add spinner for thing taht take time. like fetching
-- [ ] Add protection 
-    - [ ] Git (if not installed.)
-    - [ ] ... jq
+- [x] Add protection 
+    - [x] Git (if not installed.)
+    - [x] ... jq

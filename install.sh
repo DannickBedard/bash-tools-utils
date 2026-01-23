@@ -2,6 +2,27 @@
 
 # git pull if possible.
 
+
+require_deps() {
+  local missing=()
+
+  for dep in jq fzf; do
+    if [[ -z "$(command -v "$dep")" ]]; then
+      missing+=("$dep")
+    fi
+  done
+
+  if (( ${#missing[@]} > 0 )); then
+    echo "Error: missing dependencies: ${missing[*]}"
+    echo "Please install them to continue. Refer to the README for instructions."
+    return 1
+  fi
+}
+
+require_deps || exit 1
+
+
+
 # loop through arguments
 for arg in "$@"; do
   if [[ "$arg" == "--pull" ]]; then

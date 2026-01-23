@@ -4,7 +4,7 @@
 PROJECTS_FILE="$HOME/bash_projects.json"
 
 load_projects() {
-  [[ -v projects ]] && unset projects
+  unset projects
   declare -gA projects
 
   if [[ ! -f "$PROJECTS_FILE" ]]; then
@@ -69,7 +69,16 @@ opv() {
   fi
 }
 
+require_jq() {
+  if [[ -z "$(command -v jq)" ]]; then
+    echo "Error: jq is required but not installed."
+    echo "Install jq to use this function."
+    return 1
+  fi
+}
+
 add_project() {
+   require_jq
   local name="$1"
   local path="${2:-$(pwd)}"
   local file="${PROJECTS_FILE}"
@@ -112,7 +121,9 @@ add_project() {
   echo "✓ Project '$name' → $path"
   refresh_projects
 }
+
  remove_project() {
+   require_jq
   local name="$1"
   local file="$PROJECTS_FILE"
   local tmp
