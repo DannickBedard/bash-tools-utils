@@ -25,6 +25,7 @@ HISTSIZE=500
 HISTFILESIZE=100000
 
 # load fzf
+source ~/bash_utils/spinner.sh
 source ~/bash_utils/fzf.sh
 
 source ~/bash_utils/project.sh
@@ -34,7 +35,6 @@ source ~/bash_utils/bitbucket.sh
 
 # git helper functions
 source ~/bash_utils/git.sh
-source ~/bash_utils/spinner.sh
 
 
 # Utility functions

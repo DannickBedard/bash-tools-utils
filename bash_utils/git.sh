@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-work() {
+create_branch_from_ticket() {
 
   local prefix="BSP"   # default prefix
   local ticket_input=""
@@ -25,7 +25,7 @@ work() {
   done
 
   if [[ -z "$ticket_input" ]]; then
-    echo "❌ Usage: work [-p <prefix>] <ticket-number | jira-url>"
+    echo "❌ Usage: create_branch_from_ticket [-p <prefix>] <ticket-number | jira-url>"
     return 1
   fi
 
@@ -47,7 +47,7 @@ work() {
   echo "branch name: $ticket_number"
 
   echo "🔄 Fetching branches..."
-  git fetch -p >/dev/null 2>&1
+  spinner git fetch -p >/dev/null 2>&1
 
   # Check if any branch already contains the ticket number
   local existing_branch
