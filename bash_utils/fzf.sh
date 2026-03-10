@@ -21,7 +21,7 @@ alias npm='load_fzf; command fzf'
 default_fzf() {
   require_fzf
   load_fzf
-  fzf --border --height=20% --info=inline --reverse 
+  fzf --border --height=20% --info=inline --reverse "$@"
     #--with-nth=1 \
     #--preview-window=right:40%
 

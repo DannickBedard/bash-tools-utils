@@ -126,6 +126,10 @@ git_select_base_branch() {
   if [[ -n "$release_hotfix_list" ]]; then
     base_branch=$(printf "%s\n" "$release_hotfix_list" \
       | default_fzf --prompt="Select base branch (release/hotfix): ")
+    if [[ -n "$base_branch" ]]; then
+      echo "$base_branch"
+      return 0 
+    fi
   else
     all_branches_shown=true
     echo "📦 No release/hotfix branches found, showing all branches." >&2
@@ -167,7 +171,7 @@ apply_stash() {
 
   # ask to show stash or not
   local show_stash
-  show_stash=$(printf "yes\nno\napply\nskip" | default_fzf prompt="Show stash?  > ")
+  show_stash=$(printf "yes\nno\napply\nskip" | default_fzf --prompt="Show stash?  > ")
 
   if [ "$show_stash" == "skip" ]; then
     skip_stash
@@ -222,7 +226,7 @@ apply_stash() {
   fi
 }
 
-gcheckout() {
+git_checkout() {
   echo "Discovering branches..."
   git fetch --no-tags --quiet
   

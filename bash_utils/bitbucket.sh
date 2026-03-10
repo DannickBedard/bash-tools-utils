@@ -6,7 +6,7 @@ pr() {
 
 pra() {
 
-  base_branch=$(gitselectbase | tee /dev/tty) || exit 1
+  base_branch=$(git_select_base_branch | tee /dev/tty) || exit 1
   if [[ -z "$base_branch" ]]; then
     echo "❌ No base branch selected."
     return 1

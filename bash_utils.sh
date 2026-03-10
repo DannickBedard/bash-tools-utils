@@ -30,11 +30,12 @@ source ~/bash_utils/fzf.sh
 
 source ~/bash_utils/project.sh
 
+# git helper functions
+source ~/bash_utils/git.sh
+
 # create pr for bitbucket
 source ~/bash_utils/bitbucket.sh
 
-# git helper functions
-source ~/bash_utils/git.sh
 
 
 # Utility functions
