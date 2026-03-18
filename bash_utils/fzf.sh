@@ -16,7 +16,7 @@ load_fzf() {
   fi
 }
 
-alias npm='load_fzf; command fzf'
+alias fzf='load_fzf; command fzf'
 
 default_fzf() {
   require_fzf
