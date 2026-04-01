@@ -121,7 +121,6 @@ git_select_base_branch() {
   # Extract only release/hotfix branches
   release_hotfix_list=$(printf "%s\n" "$branch_list" | grep -E '^(release|hotfix)/' || true)
 
-  local all_branches_shown=false
   # Pick from filtered or full list
   if [[ -n "$release_hotfix_list" ]]; then
     base_branch=$(printf "%s\n" "$release_hotfix_list" \
@@ -130,16 +129,16 @@ git_select_base_branch() {
       echo "$base_branch"
       return 0 
     fi
-  else
-    all_branches_shown=true
-    echo "📦 No release/hotfix branches found, showing all branches." >&2
-    base_branch=$(printf "%s\n" "$branch_list" \
-      | default_fzf --prompt="Select base branch (all): " --reverse)
   fi
 
-  if [[ "$all_branches_shown" == true ]]; then
-    echo "❌ No base branch selected." >&2
-    return 1
+  echo "📦 No release/hotfix branches found, showing all branches." >&2
+  base_branch=$(printf "%s\n" "$branch_list" \
+    | default_fzf --prompt="Select base branch (all): " --reverse)
+
+  if [[ -n "$base_branch" ]]; then
+    # Branch is selected
+    echo "$base_branch"
+    return 0 
   fi
 
   echo "📦 No branch chosen, showing all branches." >&2
