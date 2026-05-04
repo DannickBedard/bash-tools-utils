@@ -4,6 +4,7 @@ create_branch_from_ticket() {
 
   local prefix="BSP"   # default prefix
   local ticket_input=""
+  local description=""
 
   # Parse options
   while [[ $# -gt 0 ]]; do
@@ -47,7 +48,7 @@ create_branch_from_ticket() {
   echo "branch name: $ticket_number"
 
   echo "🔄 Fetching branches..."
-  spinner git fetch -p >/dev/null 2>&1
+  spinner git fetch -p -q 
 
   # Check if any branch already contains the ticket number
   local existing_branch
@@ -74,6 +75,8 @@ create_branch_from_ticket() {
       echo "✅ Switched to existing branch."
       apply_stash
       return 0
+    else
+      read -rp "📝 Enter suffixes (optionnal e.g. v1) : " description
     fi
   fi
 
@@ -93,9 +96,12 @@ create_branch_from_ticket() {
     return 1
   fi
 
-  read -rp "📝 Enter suffixes (optionnal e.g. v1)" description
 
   local new_branch="${branch_type}/${ticket_number}"
+  if [[ -z "$description" ]]; then
+    read -rp "📝 Enter suffixes (optionnal e.g. v1) : " description
+  fi
+
   if [[ -n "$description" ]]; then
     description=$(echo "$description" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
     new_branch="${new_branch}-${description}"
@@ -155,6 +161,10 @@ git_select_base_branch() {
   echo "$base_branch"
 }
 
+git_stash_show() {
+  apply_stash
+}
+
 apply_stash() {
 
   skip_stash() {
@@ -197,7 +207,7 @@ apply_stash() {
 
       if [ "$show_detail" == "apply" ]; then
         restore_stash
-        return 1
+        return 0
       fi
 
       # ask to apply stash.
@@ -210,9 +220,8 @@ apply_stash() {
 
       if [[ -n "$apply_stash" ]]; then
         if [ "$apply_stash" == "yes" ]; then
-          echo "📦 Restoring stash..."
           restore_stash
-          return 1
+          return 0
         fi
       fi
 
@@ -221,9 +230,27 @@ apply_stash() {
   if [ "$show_stash" == "apply" ]; then
     echo "📦 Applying stash..."
     git stash pop
-    return 1
+    return 0
   fi
 }
+
+git_pull() {
+  echo "🔄 Fetching branches..."
+  spinner git fetch -p -q 
+
+  base_branch=$(git_select_base_branch | tee /dev/tty) || exit 1
+  if [[ -z "$base_branch" ]]; then
+    echo "❌ No base branch selected."
+    return 1
+  fi
+
+  echo "✅ Selected base branch: $base_branch"
+  base_branch="${base_branch#remotes/origin/}"
+
+  echo "🔄 Pulling from '$base_branch'"
+  spinner git pull origin "$base_branch"
+}
+
 
 git_checkout() {
   echo "Discovering branches..."

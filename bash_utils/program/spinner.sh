@@ -41,7 +41,6 @@ spinner_debug() {
 }
 
 spinner_cleanup() {
-  echo "💀 Cleaning up..."
 	if [[ -n $SPINNER_PID ]]; then
 		spinner_debug "killing spinner ($SPINNER_PID)"
 		kill "$SPINNER_PID" &> /dev/null
