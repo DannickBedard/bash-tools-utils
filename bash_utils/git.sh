@@ -73,6 +73,7 @@ create_branch_from_ticket() {
       return 0
     else
       read -rp "📝 Enter suffixes (optionnal e.g. v1) : " description
+      existing_branch=""
     fi
   fi
 
@@ -188,28 +189,6 @@ git_select_base_branch() {
 
   # Return value by echoing it
   echo "$base_branch"
-}
-
-# Generic branch picker for cases that don't need the release/hotfix filtering
-# that git_select_base_branch applies (e.g. picking a PR/upstream target like
-# main/master/develop).
-git_select_upstream_branch() {
-  local branch_list upstream_branch
-
-  branch_list=$(git branch --all \
-    | sed 's/^[* ]*//' \
-    | sed 's#^remotes/origin/##' \
-    | sort -u)
-
-  upstream_branch=$(printf "%s\n" "$branch_list" \
-    | default_fzf --prompt="Select upstream branch (PR target): " --reverse)
-
-  if [[ -z "$upstream_branch" ]]; then
-    echo "❌ No upstream branch selected." >&2
-    return 1
-  fi
-
-  echo "$upstream_branch"
 }
 
 git_stash_show() {
@@ -342,6 +321,7 @@ prompt_switch_back() {
   if [[ "$go_back" == "yes" ]]; then
     git checkout "$target_branch"
     echo "🔀 Switched back to '$target_branch'."
+    apply_stash
   fi
 }
 
@@ -368,7 +348,7 @@ create_upstream_branch() {
 
   echo "Selecting upstream branch..."
   local upstream_branch
-  upstream_branch=$(git_select_upstream_branch | tee /dev/tty) || return 1
+  upstream_branch=$(git_select_base_branch | tee /dev/tty) || return 1
   if [[ -z "$upstream_branch" ]]; then
     echo "❌ No upstream branch selected."
     return 1
@@ -394,17 +374,12 @@ create_upstream_branch() {
     echo "$existing_branch"
 
     local choice
-    choice=$(printf "Use existing\nCreate new" | default_fzf --prompt="Branch already exists. What do you want to do? > ")
+    choice=$(printf "Clean and use existing\nCreate new" | default_fzf --prompt="Branch already exists. What do you want to do? > ")
 
-    if [[ "$choice" == "Use existing" ]]; then
+    if [[ "$choice" == "Clean and use existing" ]]; then
       git stash
       echo "🔀 Checking out existing branch: $new_branch"
-      git checkout "$new_branch"
-      apply_stash
-      echo "✅ Switched to existing branch."
-      create_pr_bitbucket "$new_branch" "$upstream_branch"
-      prompt_switch_back "$previous_branch"
-      return 0
+      git branch -D "$new_branch"
     fi
   fi
 
@@ -412,9 +387,10 @@ create_upstream_branch() {
   git stash
   git checkout "$base_branch" && git pull origin "$base_branch"
   git checkout -b "$new_branch"
+  git pull origin "$upstream_branch" # <-- sync the branch
 
   echo "📤 Pushing '$new_branch' and setting up tracking reference..."
-  if ! git push -u origin "$new_branch"; then
+  if ! git push -f -u origin "$new_branch"; then
     echo "❌ Push failed."
     # apply_stash
     return 1
