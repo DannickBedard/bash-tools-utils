@@ -74,6 +74,8 @@ create_branch_from_ticket() {
     else
       read -rp "📝 Enter suffixes (optionnal e.g. v1) : " description
       existing_branch=""
+      ticket_number="$ticket_number-$description"
+      description=""
     fi
   fi
 
