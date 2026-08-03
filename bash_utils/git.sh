@@ -84,6 +84,7 @@ create_branch_from_ticket() {
 
   # Check if any branch already contains the ticket number
   # check if branch existe after fetching
+  existing_branch="" # reset because previous check filled this
   existing_branch=$(git branch -a --sort=-committerdate | sed 's/^[* ]*//' | grep -F "$ticket_number" | sort -u)
 
   if [[ -n "$existing_branch" ]]; then
