@@ -74,7 +74,9 @@ create_branch_from_ticket() {
     else
       read -rp "📝 Enter suffixes (optionnal e.g. v1) : " description
       existing_branch=""
-      ticket_number="$ticket_number-$description"
+      if [[ -n "$description" ]]; then
+        ticket_number="$ticket_number-$description"
+      fi
       description=""
     fi
   fi
@@ -84,33 +86,13 @@ create_branch_from_ticket() {
 
   # Check if any branch already contains the ticket number
   # check if branch existe after fetching
-  existing_branch="" # reset because previous check filled this
-  existing_branch=$(git branch -a --sort=-committerdate | sed 's/^[* ]*//' | grep -F "$ticket_number" | sort -u)
+  local still_existing_branch
+  echo "Checking if branch already exists $ticket_number"
+  still_existing_branch=$(git branch -a --sort=-committerdate | sed 's/^[* ]*//' | grep -F "$ticket_number" | sort -u)
 
-  if [[ -n "$existing_branch" ]]; then
-    echo "⚠️  Found existing branch(es) containing '$ticket_number':"
-    echo "$existing_branch"
-
-    local choice
-    choice=$(printf "Use existing\nCreate new" | default_fzf --prompt="Branch already exists. What do you want to do? > " )
-
-    if [[ "$choice" == "Use existing" ]]; then
-      local selected_existing
-      selected_existing=$(echo "$existing_branch" | default_fzf --prompt="Select existing branch > ")
-      if [[ -z "$selected_existing" ]]; then
-        echo "❌ No branch selected."
-        return 1
-      fi
-      selected_existing="${selected_existing#remotes/origin/}"
-      git stash
-      echo "🔀 Checking out existing branch: $selected_existing"
-      git checkout "$selected_existing"
-      echo "✅ Switched to existing branch."
-      apply_stash
-      return 0
-    else
-      read -rp "📝 Enter suffixes (optionnal e.g. v1) : " description
-    fi
+  if [[ -n "$still_existing_branch" ]]; then
+    # make a recusive call and pass the ticket number as a parameter
+    create_branch_from_ticket -n "$ticket_number"
   fi
 
   echo "Selecting base branch..."
@@ -119,6 +101,7 @@ create_branch_from_ticket() {
     echo "❌ No base branch selected."
     return 1
   fi
+
   echo "✅ Selected base branch: $base_branch"
   base_branch="${base_branch#remotes/origin/}"
 
