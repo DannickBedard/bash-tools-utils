@@ -33,6 +33,9 @@ source ~/bash_utils/project.sh
 # git helper functions
 source ~/bash_utils/git.sh
 
+# Viridem worktrees (wraps the viridem-worktree kit scripts)
+source ~/bash_utils/worktree.sh
+
 # create pr for bitbucket
 source ~/bash_utils/bitbucket.sh
 
@@ -123,6 +126,14 @@ h() {
   echo "  gcheckout        - Fetch and checkout branch using fuzzy finder"
   echo "  gc               - Shortcut for gcheckout"
   echo "  gclean           - Remove local branches deleted from remote"
+  echo ""
+  echo "WORKTREES:"
+  echo "  wt_add [key|url] [version] [bugfix|feature] - New ticket worktree + Git Bash/nvim tab"
+  echo "  wt_base [version] [release-branch]          - Create or update a base worktree"
+  echo "  wt_rm [name...]  - Remove worktrees (fzf multi-select, branches kept)"
+  echo "  wt_stale         - List ticket worktrees merged into a release or with remote deleted"
+  echo "  wt_clean         - Pick stale worktrees and remove them"
+  echo "  ow / owv         - Go to a worktree / open it in Neovim"
   echo ""
   echo "LOG VIEWING:"
   echo "  vl               - Open most recent Viridem log with klogg"

@@ -188,3 +188,45 @@ opr() {
 }
 
 
+
+# Worktree navigation
+WORKTREES_DIR="${WORKTREES_DIR:-/c/viridem-worktrees}"
+
+# Print "<name>\t<branch>" for every worktree in $WORKTREES_DIR.
+# Reads the branch from the worktree's git HEAD file (no git call, stays fast).
+list_worktrees() {
+  local dir name gitdir head branch
+  for dir in "$WORKTREES_DIR"/*/; do
+    [[ -e "$dir/.git" ]] || continue
+    name=$(basename "$dir")
+    branch=""
+    if [[ -f "$dir/.git" ]]; then
+      gitdir=$(sed -n 's/^gitdir: //p' "$dir/.git")
+    else
+      gitdir="$dir/.git"
+    fi
+    if [[ -f "$gitdir/HEAD" ]]; then
+      head=$(<"$gitdir/HEAD")
+      branch="${head#ref: refs/heads/}"
+      [[ "$head" == ref:* ]] || branch="(detached ${head:0:8})"
+    fi
+    printf "%s\t%s\n" "$name" "$branch"
+  done
+}
+
+# Pick a worktree with fzf (optional query pre-filters; a single match jumps directly)
+_select_worktree() {
+  list_worktrees | default_fzf --delimiter='\t' --select-1 --query="$*" | cut -f1
+}
+
+ow() {
+  local selected
+  selected=$(_select_worktree "$@")
+  [[ -n "$selected" ]] || return
+  cd "$WORKTREES_DIR/$selected" || return
+  echo "🌳 Now in $(pwd)"
+}
+
+owv() {
+  ow "$@" && nvim .
+}

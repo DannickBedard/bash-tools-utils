@@ -668,6 +668,48 @@ pr
 * Integrates with the branch-selection workflow already used by other Git utilities.
 
 
+---
+
+## Viridem Worktrees
+
+`bash_utils/worktree.sh` manages the Viridem git worktrees without Claude. Creating a worktree or
+a base goes through the scripts of the viridem-worktree kit (`~/.claude/skills/viridem-worktree`),
+so the logic stays in one place; the paths come from the kit's `.env` (`VIRIDEM_MAIN`,
+`VIRIDEM_WORKTREES`).
+
+Requires the viridem-worktree kit installed (`install-pc.sh`), fzf, and for `wt_add` the
+`worktree-nvim-tab` skill (`~/.claude/skills/worktree-nvim-tab/open-tab.sh`).
+
+| Command | What it does |
+| --- | --- |
+| `wt_add [14199\|BSP-14199\|Jira URL] [version] [bugfix\|feature]` | Creates the ticket worktree (`new-worktree.sh`), then opens a Git Bash tab with Neovim + Claude Code on it. A missing version or type is picked in fzf. When a branch of the ticket (`bugfix/` or `feature/`, local or on origin) or its folder already exists, it lists them and asks for a suffix: `BSP-14199-v2`. |
+| `wt_base [version] [release-branch]` | Existing base: updates it to the latest of its release branch, or moves it to another one (`update-base.sh`). New base: pick the `origin/release/*` branch in fzf (`new-base.sh`). |
+| `wt_rm [name...]` | Removes worktrees, picked in fzf (TAB for several). The branch is always kept. |
+| `wt_stale` | Lists the worktrees no longer needed: branch merged into an origin release branch or `master` (Bitbucket "Merged in <branch>" commit, no commit since), or remote branch deleted. |
+| `wt_clean` | `wt_stale`, then pick in fzf and remove with `wt_rm`. |
+| `ow` / `owv` | Go to a worktree / open it in Neovim (`project.sh`). |
+
+### Safety in `wt_rm`
+
+* A base still used by ticket worktrees is never removed.
+* A worktree with uncommitted changes asks first: answer `y` to stash them (untracked files
+  included) with the branch name as message, then remove it; anything else keeps it. The stash
+  is shared by all worktrees: find it with `git stash list`.
+* `wt_clean` only offers stale worktrees (merged or remote gone), so it discards their
+  uncommitted changes without stashing; the confirmation prompt says so.
+* Commits never pushed are reported; they stay in the kept branch.
+* The `web/js/node_modules` junction to the base is removed first, so the base's real
+  `node_modules` can never be deleted through it.
+* After removal, switch the VM away if it served that worktree: `cd / && sudo vswitch <other>`.
+
+### Example
+
+```bash
+wt_add 14199            # pick the base and bugfix/feature in fzf
+wt_base v2026.5         # update the v2026.5 base
+wt_stale                # what can go?
+wt_clean                # pick and remove
+```
 
 # Todos 
 - [x] Add spinner program 
