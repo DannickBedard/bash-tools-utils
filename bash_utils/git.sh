@@ -47,63 +47,57 @@ create_branch_from_ticket() {
 
   echo "branch name: $ticket_number"
 
-  local existing_branch
-  existing_branch=$(git branch -a --sort=-committerdate | sed 's/^[* ]*//' | grep -F "$ticket_number" | sort -u)
+  # Fetch first so remote-only branches are part of the existing-branch check
+  echo "🔄 Fetching branches..."
+  spinner git fetch -p -q
 
-  if [[ -n "$existing_branch" ]]; then
-    echo "⚠️  Found existing branch(es) containing '$ticket_number':"
+  local existing_branch choice suffix suffix_asked=false
+  while existing_branch=$(_find_ticket_branches "$ticket_number"); [[ -n "$existing_branch" ]]; do
+    echo "⚠️  Found existing branch(es) for '$ticket_number':"
     echo "$existing_branch"
 
-    local choice
-    choice=$(printf "Use existing\nCreate new" | default_fzf --prompt="Branch already exists. What do you want to do? > " )
+    choice=$(printf "Use existing\nCreate new" | default_fzf --prompt="Branch already exists. What do you want to do? > ")
 
-    if [[ "$choice" == "Use existing" ]]; then
-      local selected_existing
-      selected_existing=$(echo "$existing_branch" | default_fzf --prompt="Select existing branch > ")
-      if [[ -z "$selected_existing" ]]; then
-        echo "❌ No branch selected."
+    case "$choice" in
+      "Use existing")
+        local selected_existing
+        selected_existing=$(echo "$existing_branch" | default_fzf --prompt="Select existing branch > ")
+        if [[ -z "$selected_existing" ]]; then
+          echo "❌ No branch selected."
+          return 1
+        fi
+        local stashed=false
+        _stash_if_dirty && stashed=true
+        echo "🔀 Checking out existing branch: $selected_existing"
+        git checkout "$selected_existing" && echo "✅ Switched to existing branch."
+        $stashed && apply_stash
+        return 0
+        ;;
+      "Create new")
+        read -rp "📝 Enter suffixes (optionnal e.g. v1) : " suffix
+        suffix_asked=true
+        # No suffix: keep the name, the exact-name check below catches a real clash
+        [[ -z "$suffix" ]] && break
+        ticket_number="$ticket_number-$(_slugify "$suffix")"
+        echo "branch name: $ticket_number"
+        ;;
+      *)
+        echo "❌ Cancelled."
         return 1
-      fi
-      selected_existing="${selected_existing#remotes/origin/}"
-      git stash
-      echo "🔀 Checking out existing branch: $selected_existing"
-      git checkout "$selected_existing"
-      echo "✅ Switched to existing branch."
-      apply_stash
-      return 0
-    else
-      read -rp "📝 Enter suffixes (optionnal e.g. v1) : " description
-      existing_branch=""
-      if [[ -n "$description" ]]; then
-        ticket_number="$ticket_number-$description"
-      fi
-      description=""
-    fi
-  fi
-
-  echo "🔄 Fetching branches..."
-  spinner git fetch -p -q 
-
-  # Check if any branch already contains the ticket number
-  # check if branch existe after fetching
-  local still_existing_branch
-  echo "Checking if branch already exists $ticket_number"
-  still_existing_branch=$(git branch -a --sort=-committerdate | sed 's/^[* ]*//' | grep -F "$ticket_number" | sort -u)
-
-  if [[ -n "$still_existing_branch" ]]; then
-    # make a recusive call and pass the ticket number as a parameter
-    create_branch_from_ticket -n "$ticket_number"
-  fi
+        ;;
+    esac
+  done
 
   echo "Selecting base branch..."
-  base_branch=$(git_select_base_branch | tee /dev/tty) || exit 1
+  local base_branch
+  base_branch=$(git_select_base_branch | tee /dev/tty) || return 1
   if [[ -z "$base_branch" ]]; then
     echo "❌ No base branch selected."
     return 1
   fi
 
-  echo "✅ Selected base branch: $base_branch"
   base_branch="${base_branch#remotes/origin/}"
+  echo "✅ Selected base branch: $base_branch"
 
   local branch_type
   branch_type=$(printf "bugfix\nfeature" | default_fzf --prompt="Select branch type > ")
@@ -112,68 +106,83 @@ create_branch_from_ticket() {
     return 1
   fi
 
-
   local new_branch="${branch_type}/${ticket_number}"
-  if [[ -z "$description" ]]; then
-    read -rp "📝 Enter suffixes (optionnal e.g. v1) : " description
+  if ! $suffix_asked; then
+    read -rp "📝 Enter suffixes (optionnal e.g. v1) : " suffix
+    [[ -n "$suffix" ]] && new_branch="${new_branch}-$(_slugify "$suffix")"
   fi
 
-  if [[ -n "$description" ]]; then
-    description=$(echo "$description" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-    new_branch="${new_branch}-${description}"
+  if git show-ref --quiet "refs/heads/$new_branch" || git show-ref --quiet "refs/remotes/origin/$new_branch"; then
+    echo "❌ Branch '$new_branch' already exists. Run again and pick a suffix."
+    return 1
   fi
 
   echo "🚀 Creating branch '$new_branch' from '$base_branch'..."
+  local stashed=false
+  _stash_if_dirty && stashed=true
+  if ! { git checkout "$base_branch" && git pull origin "$base_branch"; }; then
+    echo "❌ Could not update '$base_branch', branch not created."
+    $stashed && apply_stash
+    return 1
+  fi
+  git checkout -b "$new_branch" && echo "✅ Branch created and switched: $new_branch"
+  $stashed && apply_stash
+}
+
+# Local and remote branches for a ticket, newest first, without duplicates.
+# Matches the whole ticket number: BSP-1418 does not match BSP-14182.
+_find_ticket_branches() {
+  git branch -a --sort=-committerdate --format='%(refname:short)' \
+    | sed 's#^origin/##' \
+    | grep -vx 'origin\|HEAD' \
+    | grep -E "(^|/)$1([^0-9]|$)" \
+    | awk '!seen[$0]++'
+}
+
+# Stash only when there is something to stash; returns 1 when the tree is clean,
+# so callers don't pop an older, unrelated stash afterwards.
+_stash_if_dirty() {
+  git diff --quiet && git diff --cached --quiet && return 1
   git stash
-  git checkout "$base_branch" && git pull origin "$base_branch"
-  git checkout -b "$new_branch"
-  apply_stash
-  echo "✅ Branch created and switched: $new_branch"
+}
+
+_slugify() {
+  echo "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'
 }
 
 git_select_base_branch() {
   local base_branch branch_list release_hotfix_list
 
   # Get all branches once
-  branch_list=$(git branch --all \
-    | sed 's/^[* ]*//' \
-    | sed 's#^remotes/origin/##' \
+  branch_list=$(git branch --all --format='%(refname:short)' \
+    | sed 's#^origin/##' \
+    | grep -vx 'origin\|HEAD' \
     | sort -u)
 
   # Extract only release/hotfix branches
   release_hotfix_list=$(printf "%s\n" "$branch_list" | grep -E '^(release|hotfix)/' || true)
 
-  # Pick from filtered or full list
+  # Release/hotfix list first; cancelling it falls back to the full list once
   if [[ -n "$release_hotfix_list" ]]; then
     base_branch=$(printf "%s\n" "$release_hotfix_list" \
       | default_fzf --prompt="Select base branch (release/hotfix): ")
     if [[ -n "$base_branch" ]]; then
       echo "$base_branch"
-      return 0 
+      return 0
     fi
+    echo "📦 No release/hotfix branch chosen, showing all branches." >&2
+  else
+    echo "📦 No release/hotfix branches found, showing all branches." >&2
   fi
 
-  echo "📦 No release/hotfix branches found, showing all branches." >&2
   base_branch=$(printf "%s\n" "$branch_list" \
-    | default_fzf --prompt="Select base branch (all): " --reverse)
+    | default_fzf --prompt="Select base branch (all): ")
 
-  if [[ -n "$base_branch" ]]; then
-    # Branch is selected
-    echo "$base_branch"
-    return 0 
-  fi
-
-  echo "📦 No branch chosen, showing all branches." >&2
-  base_branch=$(printf "%s\n" "$branch_list" \
-    | default_fzf --prompt="Select base branch (all): " --reverse)
-
-  # No selection case
   if [[ -z "$base_branch" ]]; then
     echo "❌ No base branch selected." >&2
     return 1
   fi
 
-  # Return value by echoing it
   echo "$base_branch"
 }
 
@@ -181,80 +190,48 @@ git_stash_show() {
   apply_stash
 }
 
+# Interactive restore of the latest stash. Every "skip"/"no"/Esc stops here.
 apply_stash() {
-
-  skip_stash() {
-    echo "Skipping stash recup..."
-    return 1
-  }
-
-  restore_stash() {
-    echo "📦 Restoring stash..."
-    git stash pop
-    return 1
-  }
-
-  # ask to show stash or not
-  local show_stash
-  show_stash=$(printf "yes\nno\napply\nskip" | default_fzf --prompt="Show stash?  > ")
-
-  if [ "$show_stash" == "skip" ]; then
-    skip_stash
-  fi
-
-  if [ "$show_stash" == "yes" ]; then
-    echo "📦 Showing stash..."
-    git stash show
-
-      # ask to see more detail or apply stash
-      local show_detail
-      show_detail=$(printf "yes\nno\napply\nskip" | default_fzf --prompt="Show detail?  > ")
-
-      if [ "$show_detail" == "skip" ]; then
-        skip_stash
-      fi
-      
-      if [[ -n "$show_detail" ]]; then
-        if [ "$show_detail" == "yes" ]; then
-          echo "📦 Showing detail..."
-          git stash show --patch
-        fi
-      fi
-
-      if [ "$show_detail" == "apply" ]; then
-        restore_stash
-        return 0
-      fi
-
-      # ask to apply stash.
-      local apply_stash
-      apply_stash=$(printf "yes\nno\nskip" | default_fzf --prompt="Apply stash?  > ")
-
-      if [ "$apply_stash" == "skip" ]; then
-        skip_stash
-      fi
-
-      if [[ -n "$apply_stash" ]]; then
-        if [ "$apply_stash" == "yes" ]; then
-          restore_stash
-          return 0
-        fi
-      fi
-
-  fi
-
-  if [ "$show_stash" == "apply" ]; then
-    echo "📦 Applying stash..."
-    git stash pop
+  if [[ -z "$(git stash list -n 1)" ]]; then
+    echo "📦 No stash to restore."
     return 0
   fi
+
+  local answer
+  answer=$(printf "yes\nno\napply\nskip" | default_fzf --prompt="Show stash?  > ")
+  case "$answer" in
+    apply) _restore_stash; return ;;
+    yes)   echo "📦 Showing stash..."; git stash show ;;
+    *)     echo "Skipping stash recup..."; return 0 ;;
+  esac
+
+  answer=$(printf "yes\nno\napply\nskip" | default_fzf --prompt="Show detail?  > ")
+  case "$answer" in
+    apply) _restore_stash; return ;;
+    yes)   echo "📦 Showing detail..."; git stash show --patch ;;
+    no)    ;;
+    *)     echo "Skipping stash recup..."; return 0 ;;
+  esac
+
+  answer=$(printf "yes\nno" | default_fzf --prompt="Apply stash?  > ")
+  if [[ "$answer" == "yes" ]]; then
+    _restore_stash
+  else
+    echo "Skipping stash recup... (still in git stash list)"
+  fi
+}
+
+_restore_stash() {
+  echo "📦 Restoring stash..."
+  git stash pop
 }
 
 git_pull() {
   echo "🔄 Fetching branches..."
-  spinner git fetch -p -q 
+  spinner git fetch -p -q
 
-  base_branch=$(git_select_base_branch | tee /dev/tty) || exit 1
+  local base_branch
+  base_branch=$(git_select_base_branch | tee /dev/tty) || return 1
   if [[ -z "$base_branch" ]]; then
     echo "❌ No base branch selected."
     return 1
@@ -271,18 +248,18 @@ git_pull() {
 git_checkout() {
   echo "Discovering branches..."
   git fetch --no-tags --quiet
-  
+
   remote_branches=$(git ls-remote --heads origin | awk '{print $2}' | sed 's#refs/heads/##')
   selected_branch=$( (git branch --format="%(refname:short)"; echo "$remote_branches") | sort -u | default_fzf)
-  
+
   [[ -z "$selected_branch" ]] && echo "No branch selected." && return
   echo "You selected branch: $selected_branch"
   history -s "git checkout $selected_branch"
   git checkout "$selected_branch" && echo "Checkout successful" || echo "Checkout failed."
 }
 
-gc() { 
-  gcheckout
+gc() {
+  git_checkout
 }
 
 gclean() {
@@ -296,18 +273,21 @@ gclean() {
 
 # Asks (via fzf yes/no) whether to switch back to a given branch, and does so
 # if confirmed. Used after PR-opening flows so you can easily hop back to
-# whatever you were working on before.
+# whatever you were working on before. Pass "true" as 2nd argument when
+# changes were stashed before leaving that branch, to offer restoring them.
 prompt_switch_back() {
-  local target_branch="$1"
+  local target_branch="$1" stashed="${2:-false}"
   [[ -z "$target_branch" ]] && return 0
 
   local go_back
   go_back=$(printf "yes\nno" | default_fzf --prompt="Switch back to '$target_branch'? > ")
 
   if [[ "$go_back" == "yes" ]]; then
-    git checkout "$target_branch"
+    git checkout "$target_branch" || return 1
     echo "🔀 Switched back to '$target_branch'."
-    apply_stash
+    $stashed && apply_stash
+  elif $stashed; then
+    echo "📦 Your changes from '$target_branch' are still in git stash list."
   fi
 }
 
@@ -317,7 +297,6 @@ prompt_switch_back() {
 create_upstream_branch() {
   local previous_branch
   previous_branch=$(git rev-parse --abbrev-ref HEAD)
-  echo "debugging previous_branch $previous_branch"
 
   echo "🔄 Fetching branches..."
   spinner git fetch -p -q
@@ -352,41 +331,55 @@ create_upstream_branch() {
   local sanitized_base="${base_branch//\//-}"
   local new_branch="upstream-${sanitized_base}"
 
-  local existing_branch
-  existing_branch=$(git branch -a --sort=-committerdate | sed 's/^[* ]*//' | grep -F "$new_branch" | sort -u)
-
-  if [[ -n "$existing_branch" ]]; then
-    echo "⚠️  Found existing branch(es) containing '$new_branch':"
-    echo "$existing_branch"
-
+  # Exact name only: upstream-release-v2026.4 must not match upstream-release-v2026.4-13.
+  # The remote copy is overwritten by the force push, only the local one is in the way.
+  local recreate=false
+  if git show-ref --quiet "refs/heads/$new_branch"; then
+    echo "⚠️  Local branch '$new_branch' already exists."
     local choice
-    choice=$(printf "Clean and use existing\nCreate new" | default_fzf --prompt="Branch already exists. What do you want to do? > ")
-
-    if [[ "$choice" == "Clean and use existing" ]]; then
-      git stash
-      echo "🔀 Checking out existing branch: $new_branch"
-      git branch -D "$new_branch"
+    choice=$(printf "Clean and recreate\nCancel" | default_fzf --prompt="Branch already exists. What do you want to do? > ")
+    if [[ "$choice" != "Clean and recreate" ]]; then
+      echo "❌ Cancelled."
+      return 1
     fi
+    recreate=true
   fi
 
+  local stashed=false
+  _stash_if_dirty && stashed=true
+
   echo "🚀 Creating branch '$new_branch' from '$base_branch'..."
-  git stash
-  git checkout "$base_branch" && git pull origin "$base_branch"
-  git checkout -b "$new_branch"
-  git pull origin "$upstream_branch" # <-- sync the branch
+  if ! { git checkout "$base_branch" && git pull origin "$base_branch"; }; then
+    echo "❌ Could not update '$base_branch'."
+    prompt_switch_back "$previous_branch" "$stashed"
+    return 1
+  fi
+
+  # Now off the branch, so it can be deleted even if we started on it
+  $recreate && git branch -D "$new_branch"
+
+  if ! git checkout -b "$new_branch"; then
+    echo "❌ Could not create '$new_branch'."
+    prompt_switch_back "$previous_branch" "$stashed"
+    return 1
+  fi
+
+  if ! git pull origin "$upstream_branch"; then
+    echo "❌ Pulling '$upstream_branch' into '$new_branch' failed (conflicts?). Resolve, then push and open the PR yourself."
+    $stashed && echo "📦 Your changes from '$previous_branch' are still in git stash list."
+    return 1
+  fi
 
   echo "📤 Pushing '$new_branch' and setting up tracking reference..."
   if ! git push -f -u origin "$new_branch"; then
     echo "❌ Push failed."
-    # apply_stash
+    prompt_switch_back "$previous_branch" "$stashed"
     return 1
   fi
 
-  # apply_stash
   echo "✅ Branch '$new_branch' created, pushed, and tracking origin/$new_branch."
 
   create_pr_bitbucket "$new_branch" "$upstream_branch"
-  echo "prompt_switch_back"
 
-  prompt_switch_back "$previous_branch"
+  prompt_switch_back "$previous_branch" "$stashed"
 }
